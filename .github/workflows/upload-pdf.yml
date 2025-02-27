@@ -11,24 +11,21 @@ jobs:
       - uses: actions/checkout@v2
       - name: Process PDF
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           # Process the uploaded PDF
           ISSUE_NUMBER="${{ github.event.issue.number }}"
           echo "Processing PDF from issue #$ISSUE_NUMBER"
           
-          # Replace token placeholder in config.production.js
-          sed -i 's/YOUR_GITHUB_TOKEN/${{ secrets.GITHUB_TOKEN }}/g' scripts/config.production.js
+          # Create papers directory if it doesn't exist
+          mkdir -p papers
           
-          # Download the PDF attachment
-          PDF_URL=$(gh api /repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments | jq -r '.[0].body | match("https://.*\\.pdf").string')
-          if [ ! -z "$PDF_URL" ]; then
-            wget "$PDF_URL" -O "papers/${ISSUE_NUMBER}.pdf"
-            
-            # Commit and push the PDF
-            git config --global user.name "GitHub Action"
-            git config --global user.email "action@github.com"
-            git add "papers/${ISSUE_NUMBER}.pdf"
-            git commit -m "Add PDF from issue #$ISSUE_NUMBER"
-            git push
-          fi 
+          # Add comment to issue about processing status
+          gh issue comment "$ISSUE_NUMBER" --body "Processing PDF upload..."
+          
+          # Commit and push the changes
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add papers/
+          git commit -m "Add PDF from issue #$ISSUE_NUMBER" || echo "No changes to commit"
+          git push 

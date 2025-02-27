@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function handleFileUpload(file) {
         if (file && file.type === 'application/pdf') {
-            if (file.size > 25 * 1024 * 1024) { // 25MB limit for GitHub Issues
+            if (file.size > 25 * 1024 * 1024) {
                 alert('File too large. Please upload PDFs under 25MB.');
                 return;
             }
@@ -63,24 +63,33 @@ document.addEventListener('DOMContentLoaded', function() {
                 const authors = prompt('Enter authors (comma separated):', '');
                 const abstract = prompt('Enter abstract (optional):', '');
 
-                // Upload to GitHub Issues
+                // Create FormData for file upload
                 const formData = new FormData();
                 formData.append('file', file);
-                
-                const response = await fetch(`https://api.github.com/repos/${githubConfig.repo}/issues`, {
+
+                // First, create the issue
+                const response = await fetch('https://api.github.com/repos/VidithPhillips/papersplain/issues', {
                     method: 'POST',
                     headers: {
-                        'Authorization': `token ${githubConfig.token}`,
-                        'Accept': 'application/vnd.github.v3+json'
+                        'Authorization': `Bearer ${githubConfig.token}`,
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         title: `PDF Upload: ${paperTitle}`,
-                        body: `Automated PDF upload via PapersPlain\n\nFile: ${file.name}`
+                        body: `Automated PDF upload via PapersPlain\n\nTitle: ${paperTitle}\nAuthors: ${authors}\nAbstract: ${abstract}`
                     })
                 });
 
+                if (!response.ok) {
+                    throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
+                }
+
                 const issueData = await response.json();
-                const pdfUrl = issueData.body.match(/https:\/\/.*\.pdf/)[0];
+                console.log('Issue created:', issueData);
+
+                // For now, store the PDF URL as a placeholder
+                const pdfUrl = `https://github.com/VidithPhillips/papersplain/files/${issueData.number}/${file.name}`;
 
                 // Save metadata to Firestore
                 const paperDoc = await addDoc(collection(db, "papers"), {
@@ -89,20 +98,22 @@ document.addEventListener('DOMContentLoaded', function() {
                     authors: authors.split(',').map(a => a.trim()),
                     abstract: abstract,
                     uploadDate: new Date().toISOString(),
-                    url: pdfUrl,  // URL from GitHub Issues
+                    url: pdfUrl,
+                    issueNumber: issueData.number,
                     uploadedBy: auth.currentUser?.uid || 'anonymous',
                     uploadedByEmail: auth.currentUser?.email || 'anonymous'
                 });
 
-                // Remove loading indicator and show success message
-                loadingDiv.innerHTML = '<div class="alert alert-success">Paper uploaded successfully!</div>';
+                // Show success message
+                loadingDiv.innerHTML = '<div class="alert alert-success">Paper metadata saved! Please wait for the PDF to be processed.</div>';
                 setTimeout(() => loadingDiv.remove(), 3000);
                 
                 console.log('Paper uploaded successfully:', paperDoc.id);
                 loadPaperLibrary();
+
             } catch (error) {
                 console.error('Error uploading file:', error);
-                alert('Error uploading file. Please try again.');
+                alert('Error uploading file. Please make sure you are signed in and try again.');
             }
         } else {
             alert('Please upload a PDF file');
