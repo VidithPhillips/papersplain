@@ -11,6 +11,5 @@ export const firebaseConfig = {
 
 // GitHub configuration
 export const githubConfig = {
-    repo: "VidithPhillips/papersplain",
-    token: process.env.PAT_TOKEN || null
+    repo: "VidithPhillips/papersplain"
 }; 

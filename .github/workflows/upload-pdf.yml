@@ -10,10 +10,6 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       
-      - name: Setup GitHub CLI
-        run: |
-          gh auth login --with-token <<< "${{ secrets.PAT_TOKEN }}"
-      
       - name: Process PDF
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
@@ -22,18 +18,19 @@ jobs:
           ISSUE_NUMBER="${{ github.event.issue.number }}"
           mkdir -p papers
           
-          # Add comment to issue
-          gh issue comment "$ISSUE_NUMBER" --body "Processing PDF upload..."
+          # Get issue content
+          ISSUE_BODY=$(gh issue view "$ISSUE_NUMBER" --json body -q '.body')
           
-          # Get paper ID from issue body
-          PAPER_ID=$(gh issue view "$ISSUE_NUMBER" --json body -q '.body' | grep -o 'PaperID: .*' | cut -d' ' -f2)
+          # Extract paper ID and content
+          PAPER_ID=$(echo "$ISSUE_BODY" | grep -o 'PaperID: .*' | cut -d' ' -f2)
+          PDF_CONTENT=$(echo "$ISSUE_BODY" | grep -o 'Content: .*' | cut -d' ' -f2-)
           
-          # Create empty PDF file to track
-          touch "papers/$PAPER_ID.pdf"
+          # Save PDF
+          echo "$PDF_CONTENT" | base64 -d > "papers/$PAPER_ID.pdf"
           
-          # Commit and push the changes
+          # Commit and push
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
           git add "papers/$PAPER_ID.pdf"
-          git commit -m "Initialize PDF file for issue #$ISSUE_NUMBER"
+          git commit -m "Add PDF from issue #$ISSUE_NUMBER"
           git push 

@@ -3,11 +3,16 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebas
 import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { getFirestore, collection, addDoc, getDocs, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { firebaseConfig, githubConfig } from './config.production.js';
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-functions.js";
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+// Initialize Firebase Functions
+const functions = getFunctions(app);
+const getGithubToken = httpsCallable(functions, 'getGithubToken');
 
 // Add these variables at the top level of your script
 let currentPDF = null;
@@ -80,29 +85,24 @@ document.addEventListener('DOMContentLoaded', function() {
                     uploadedByEmail: auth.currentUser?.email || 'anonymous'
                 });
 
-                // Convert file to base64 and upload to GitHub
+                // Convert file to base64
                 const reader = new FileReader();
                 reader.readAsArrayBuffer(file);
                 reader.onload = async () => {
-                    // Create a blob from the file data
                     const blob = new Blob([reader.result], { type: 'application/pdf' });
-                    
-                    // Create FormData
-                    const formData = new FormData();
-                    formData.append('file', blob, file.name);
+                    const base64data = await blob.text();
 
                     try {
-                        // First, create the issue
+                        // Create the issue
                         const issueResponse = await fetch(`https://api.github.com/repos/${githubConfig.repo}/issues`, {
                             method: 'POST',
                             headers: {
-                                'Authorization': `token ${process.env.PAT_TOKEN}`,
                                 'Accept': 'application/vnd.github.v3+json',
                                 'Content-Type': 'application/json'
                             },
                             body: JSON.stringify({
                                 title: `PDF Upload: ${paperTitle}`,
-                                body: `Title: ${paperTitle}\nAuthors: ${authors}\nAbstract: ${abstract}\nPaperID: ${paperDoc.id}`
+                                body: `Title: ${paperTitle}\nAuthors: ${authors}\nAbstract: ${abstract}\nPaperID: ${paperDoc.id}\nContent: ${base64data}`
                             })
                         });
 
@@ -127,7 +127,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     } catch (error) {
                         console.error('Error creating GitHub issue:', error);
-                        // Update Firestore with error status
                         await updateDoc(doc(db, "papers", paperDoc.id), {
                             status: 'error',
                             error: error.message
