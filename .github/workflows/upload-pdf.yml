@@ -1,0 +1,34 @@
+name: Handle PDF Upload
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  process-pdf:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.title, 'PDF Upload:')
+    steps:
+      - uses: actions/checkout@v2
+      - name: Process PDF
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Process the uploaded PDF
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          echo "Processing PDF from issue #$ISSUE_NUMBER"
+          
+          # Replace token placeholder in config.production.js
+          sed -i 's/YOUR_GITHUB_TOKEN/${{ secrets.GITHUB_TOKEN }}/g' scripts/config.production.js
+          
+          # Download the PDF attachment
+          PDF_URL=$(gh api /repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments | jq -r '.[0].body | match("https://.*\\.pdf").string')
+          if [ ! -z "$PDF_URL" ]; then
+            wget "$PDF_URL" -O "papers/${ISSUE_NUMBER}.pdf"
+            
+            # Commit and push the PDF
+            git config --global user.name "GitHub Action"
+            git config --global user.email "action@github.com"
+            git add "papers/${ISSUE_NUMBER}.pdf"
+            git commit -m "Add PDF from issue #$ISSUE_NUMBER"
+            git push
+          fi 
