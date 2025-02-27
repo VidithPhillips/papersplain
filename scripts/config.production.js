@@ -11,6 +11,5 @@ export const firebaseConfig = {
 
 // GitHub configuration
 export const githubConfig = {
-    token: null, // Token will be set via environment variable
     repo: "VidithPhillips/papersplain"
 }; 

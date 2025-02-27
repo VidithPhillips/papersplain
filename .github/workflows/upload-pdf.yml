@@ -13,19 +13,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          # Process the uploaded PDF
+          # Get issue body
           ISSUE_NUMBER="${{ github.event.issue.number }}"
-          echo "Processing PDF from issue #$ISSUE_NUMBER"
+          ISSUE_BODY=$(gh api /repos/${{ github.repository }}/issues/$ISSUE_NUMBER --jq .body)
           
-          # Create papers directory if it doesn't exist
+          # Extract base64 data and metadata
+          PDF_DATA=$(echo "$ISSUE_BODY" | grep -o 'Data:.*' | cut -d$'\n' -f1 | sed 's/Data://')
+          PAPER_ID=$(echo "$ISSUE_BODY" | grep -o 'PaperID:.*' | cut -d$'\n' -f1 | sed 's/PaperID://')
+          
+          # Create papers directory
           mkdir -p papers
           
-          # Add comment to issue about processing status
-          gh issue comment "$ISSUE_NUMBER" --body "Processing PDF upload..."
+          # Save PDF
+          echo "$PDF_DATA" | base64 -d > "papers/$PAPER_ID.pdf"
           
-          # Commit and push the changes
+          # Commit and push
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
           git add papers/
-          git commit -m "Add PDF from issue #$ISSUE_NUMBER" || echo "No changes to commit"
+          git commit -m "Add PDF from issue #$ISSUE_NUMBER"
           git push 
