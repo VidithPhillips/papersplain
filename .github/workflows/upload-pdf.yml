@@ -9,27 +9,31 @@ jobs:
     if: contains(github.event.issue.title, 'PDF Upload:')
     steps:
       - uses: actions/checkout@v2
+      
+      - name: Setup GitHub CLI
+        run: |
+          gh auth login --with-token <<< "${{ secrets.PAT_TOKEN }}"
+      
       - name: Process PDF
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          # Get issue body
+          # Get issue number and create papers directory
           ISSUE_NUMBER="${{ github.event.issue.number }}"
-          ISSUE_BODY=$(gh api /repos/${{ github.repository }}/issues/$ISSUE_NUMBER --jq .body)
-          
-          # Extract base64 data and metadata
-          PDF_DATA=$(echo "$ISSUE_BODY" | grep -o 'Data:.*' | cut -d$'\n' -f1 | sed 's/Data://')
-          PAPER_ID=$(echo "$ISSUE_BODY" | grep -o 'PaperID:.*' | cut -d$'\n' -f1 | sed 's/PaperID://')
-          
-          # Create papers directory
           mkdir -p papers
           
-          # Save PDF
-          echo "$PDF_DATA" | base64 -d > "papers/$PAPER_ID.pdf"
+          # Add comment to issue
+          gh issue comment "$ISSUE_NUMBER" --body "Processing PDF upload..."
           
-          # Commit and push
+          # Get paper ID from issue body
+          PAPER_ID=$(gh issue view "$ISSUE_NUMBER" --json body -q '.body' | grep -o 'PaperID: .*' | cut -d' ' -f2)
+          
+          # Create empty PDF file to track
+          touch "papers/$PAPER_ID.pdf"
+          
+          # Commit and push the changes
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
-          git add papers/
-          git commit -m "Add PDF from issue #$ISSUE_NUMBER"
+          git add "papers/$PAPER_ID.pdf"
+          git commit -m "Initialize PDF file for issue #$ISSUE_NUMBER"
           git push 

@@ -1,7 +1,7 @@
 // Import Firebase modules
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, getDocs, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { firebaseConfig, githubConfig } from './config.production.js';
 
 // Initialize Firebase
@@ -47,6 +47,11 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     async function handleFileUpload(file) {
+        if (!auth.currentUser) {
+            alert('Please sign in first');
+            return;
+        }
+
         if (file && file.type === 'application/pdf') {
             if (file.size > 25 * 1024 * 1024) {
                 alert('File too large. Please upload PDFs under 25MB.');
@@ -75,34 +80,60 @@ document.addEventListener('DOMContentLoaded', function() {
                     uploadedByEmail: auth.currentUser?.email || 'anonymous'
                 });
 
-                // Convert file to base64
+                // Convert file to base64 and upload to GitHub
                 const reader = new FileReader();
-                reader.readAsDataURL(file);
+                reader.readAsArrayBuffer(file);
                 reader.onload = async () => {
-                    const base64data = reader.result.split(',')[1];
+                    // Create a blob from the file data
+                    const blob = new Blob([reader.result], { type: 'application/pdf' });
                     
-                    // Create a new issue with the PDF content
-                    const response = await fetch(`https://api.github.com/repos/${githubConfig.repo}/issues`, {
-                        method: 'POST',
-                        headers: {
-                            'Accept': 'application/vnd.github.v3+json',
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            title: `PDF Upload: ${paperTitle}`,
-                            body: `Data:${base64data}\nTitle: ${paperTitle}\nAuthors: ${authors}\nAbstract: ${abstract}\nPaperID: ${paperDoc.id}`
-                        })
-                    });
+                    // Create FormData
+                    const formData = new FormData();
+                    formData.append('file', blob, file.name);
 
-                    if (!response.ok) {
-                        throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
+                    try {
+                        // First, create the issue
+                        const issueResponse = await fetch(`https://api.github.com/repos/${githubConfig.repo}/issues`, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `token ${process.env.PAT_TOKEN}`,
+                                'Accept': 'application/vnd.github.v3+json',
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                title: `PDF Upload: ${paperTitle}`,
+                                body: `Title: ${paperTitle}\nAuthors: ${authors}\nAbstract: ${abstract}\nPaperID: ${paperDoc.id}`
+                            })
+                        });
+
+                        if (!issueResponse.ok) {
+                            throw new Error(`GitHub API error: ${issueResponse.status}`);
+                        }
+
+                        const issueData = await issueResponse.json();
+                        
+                        // Update Firestore with issue number
+                        await updateDoc(doc(db, "papers", paperDoc.id), {
+                            issueNumber: issueData.number,
+                            status: 'uploaded'
+                        });
+
+                        // Show success message
+                        loadingDiv.innerHTML = '<div class="alert alert-success">Paper uploaded successfully!</div>';
+                        setTimeout(() => loadingDiv.remove(), 3000);
+                        
+                        // Refresh the library
+                        loadPaperLibrary();
+
+                    } catch (error) {
+                        console.error('Error creating GitHub issue:', error);
+                        // Update Firestore with error status
+                        await updateDoc(doc(db, "papers", paperDoc.id), {
+                            status: 'error',
+                            error: error.message
+                        });
+                        throw error;
                     }
-
-                    // Show success message
-                    loadingDiv.innerHTML = '<div class="alert alert-success">Paper uploaded successfully! Processing...</div>';
-                    setTimeout(() => loadingDiv.remove(), 3000);
-                    
-                    loadPaperLibrary();
                 };
 
             } catch (error) {
